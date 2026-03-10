@@ -9,8 +9,6 @@
 
 ### Changed
 - テクスチャ評価処理を ComputeShader ベースの GPU パスに対応させ、高速化
-- CPU / GPU 両方のカラー解析を Linear 色空間に統一
-- Inspector の入力モードを Color 固定に整理
 - 品質プリセットを High / Medium / Low / Custom に整理し、Custom 時のみしきい値を直接編集できるよう改善
 - Inspector の表示順と補助説明を見直し、除外テクスチャ一覧を初期状態で折りたたむよう変更
 - リザルト画面を現在の言語設定に追従する表示へ更新
@@ -26,7 +24,7 @@
 ## [0.1.2] 2026-03-10
 
 ### Changed
-- Inspector の入力モードを Color 固定に整理
+- Inspector の入力モードを Color に固定
 - Inspector の除外テクスチャ一覧を初期状態で折りたたむよう変更
 - リサイズ判定の閾値をプリセット化
 
