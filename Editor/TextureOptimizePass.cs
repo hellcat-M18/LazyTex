@@ -24,7 +24,7 @@ namespace LazyTex.Editor
                 Timestamp = System.DateTime.Now,
                 Threshold = settings.eerThreshold,
                 NormalMapThreshold = settings.normalMapEerThreshold,
-                AnalysisMode = settings.analysisMode,
+                AnalysisMode = LazyTexAnalysisMode.Color,
                 MinResolution = settings.minResolutionToProcess,
             };
 
@@ -135,7 +135,7 @@ namespace LazyTex.Editor
                         tex,
                         settings.eerThreshold,
                         settings.minResolutionToProcess,
-                        settings.analysisMode,
+                        LazyTexAnalysisMode.Color,
                         gpuCompute);
                     analysis.IsExcluded = false;
                 }
