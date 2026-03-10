@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.1.3] 2026-03-10
+
+### Added
+- Inspector とリザルト画面の日英表示切り替えを追加
+- Inspector の各設定項目に日英対応のマウスオーバー説明を追加
+- 最小処理解像度を 128 / 256 / 512 / 1024 / 2048 のドロップダウンから選べるよう追加
+
+### Changed
+- テクスチャ評価処理を ComputeShader ベースの GPU パスに対応させ、高速化
+- CPU / GPU 両方のカラー解析を Linear 色空間に統一
+- Inspector の入力モードを Color 固定に整理
+- 品質プリセットを High / Medium / Low / Custom に整理し、Custom 時のみしきい値を直接編集できるよう改善
+- Inspector の表示順と補助説明を見直し、除外テクスチャ一覧を初期状態で折りたたむよう変更
+- リザルト画面を現在の言語設定に追従する表示へ更新
+
+### Fixed
+- `LazyTexOptimizer` に `IEditorOnly` を実装し、VRChat SDK の "will be removed by the client" 警告を解消
+- Runtime asmdef に VRC SDK 参照を追加し、`IEditorOnly` を正しく解決できるよう修正
+- 最小処理解像度を独自ドロップダウン化した際に失われていた説明表示を、日英対応ツールチップとして復元
+
+### Removed
+- 一時的な処理時間ログ設定と、リザルト画面内の処理時間表示を削除
+
 ## [0.1.2] 2026-03-10
 
 ### Changed

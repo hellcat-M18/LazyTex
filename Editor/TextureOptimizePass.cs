@@ -15,7 +15,6 @@ namespace LazyTex.Editor
     {
         public static LazyTexRunReport Execute(BuildContext ctx, LazyTexOptimizer settings)
         {
-            var totalStopwatch = System.Diagnostics.Stopwatch.StartNew();
             var avatarRoot = ctx.AvatarRootObject;
             var renderers  = avatarRoot.GetComponentsInChildren<Renderer>(true);
             var runReport = new LazyTexRunReport
@@ -30,7 +29,6 @@ namespace LazyTex.Editor
 
             // --- Step 1: 全 (Renderer, slotIndex, Material, propName, Texture2D) を列挙 ---
 
-            var scanStopwatch = System.Diagnostics.Stopwatch.StartNew();
             var entries = new List<TexEntry>();
             var texFactorMap = new Dictionary<Texture2D, int>();
 
@@ -61,9 +59,6 @@ namespace LazyTex.Editor
                 }
             }
 
-            scanStopwatch.Stop();
-            runReport.TextureScanMilliseconds = scanStopwatch.Elapsed.TotalMilliseconds;
-
             if (entries.Count == 0) return runReport;
 
             // --- Step 2: ユニークテクスチャごとにEERを計算して削減係数を決定 ---
@@ -71,13 +66,10 @@ namespace LazyTex.Editor
             var resizedCache = new Dictionary<Texture2D, Texture2D>();
             var analysisMap = new Dictionary<Texture2D, LazyTexTextureReport>();
             var normalMapSet = new HashSet<Texture2D>();
-            double totalAnalysisMs = 0d;
-            double totalResizeMs = 0d;
 
             using var gpuCompute = TextureEERCompute.TryCreate();
             foreach (var tex in new List<Texture2D>(texFactorMap.Keys))
             {
-                var analysisStopwatch = System.Diagnostics.Stopwatch.StartNew();
                 string texturePath = AssetDatabase.GetAssetPath(tex);
                 bool isNormalMap = IsNormalMap(tex);
                 LazyTexTextureReport analysis;
@@ -140,10 +132,6 @@ namespace LazyTex.Editor
                     analysis.IsExcluded = false;
                 }
 
-                analysisStopwatch.Stop();
-                analysis.AnalysisMilliseconds = analysisStopwatch.Elapsed.TotalMilliseconds;
-                totalAnalysisMs += analysis.AnalysisMilliseconds;
-
                 analysisMap[tex] = analysis;
                 runReport.Textures.Add(analysis);
 
@@ -153,24 +141,16 @@ namespace LazyTex.Editor
 
                 if (factor <= 1) continue;
 
-                var resizeStopwatch = System.Diagnostics.Stopwatch.StartNew();
                 var resized = normalMapSet.Contains(tex)
                     ? TextureEER.CreateResizedNormalMap(tex, factor)
                     : TextureEER.CreateResizedTexture(tex, factor);
-                resizeStopwatch.Stop();
 
                 analysis.ResizedTexture = resized;
                 analysis.ResizedSizeBytes = TextureMemoryEstimate.GetEstimatedSizeBytes(resized);
-                analysis.ResizeMilliseconds = resizeStopwatch.Elapsed.TotalMilliseconds;
-                totalResizeMs += analysis.ResizeMilliseconds;
                 AssetDatabase.AddObjectToAsset(resized, ctx.AssetContainer);
                 resizedCache[tex] = resized;
             }
 
-            runReport.AnalysisMilliseconds = totalAnalysisMs;
-            runReport.ResizeMilliseconds = totalResizeMs;
-
-            var materialStopwatch = System.Diagnostics.Stopwatch.StartNew();
             foreach (var entry in entries)
             {
                 if (analysisMap.TryGetValue(entry.Tex, out var usageReport))
@@ -212,12 +192,6 @@ namespace LazyTex.Editor
             foreach (var pair in rendererMatUpdates)
                 pair.Key.sharedMaterials = pair.Value;
 
-            materialStopwatch.Stop();
-            runReport.MaterialSwapMilliseconds = materialStopwatch.Elapsed.TotalMilliseconds;
-
-            totalStopwatch.Stop();
-            runReport.TotalMilliseconds = totalStopwatch.Elapsed.TotalMilliseconds;
-
             Debug.Log($"[LazyTex] {resizedCache.Count} texture(s) resized on '{avatarRoot.name}':");
             foreach (var pair in resizedCache)
             {
@@ -226,44 +200,7 @@ namespace LazyTex.Editor
                           $" → 1/{f} ({pair.Key.width / f}x{pair.Key.height / f})");
             }
 
-            if (settings.enableTimingLogs)
-            {
-                LogTimingSummary(runReport);
-            }
-
             return runReport;
-        }
-
-        private static void LogTimingSummary(LazyTexRunReport report)
-        {
-            Debug.Log(
-                $"[LazyTex][Timing] total={report.TotalMilliseconds:F1} ms | " +
-                $"scan={report.TextureScanMilliseconds:F1} ms | " +
-                $"analysis={report.AnalysisMilliseconds:F1} ms | " +
-                $"resize={report.ResizeMilliseconds:F1} ms | " +
-                $"material={report.MaterialSwapMilliseconds:F1} ms");
-
-            var slowTextures = new List<LazyTexTextureReport>(report.Textures);
-            slowTextures.Sort((a, b) => b.TotalMilliseconds.CompareTo(a.TotalMilliseconds));
-
-            int count = Mathf.Min(5, slowTextures.Count);
-            for (int i = 0; i < count; i++)
-            {
-                var texture = slowTextures[i];
-                Debug.Log(
-                    $"[LazyTex][Timing] #{i + 1} {GetTextureLabel(texture)} | " +
-                    $"total={texture.TotalMilliseconds:F1} ms | " +
-                    $"analysis={texture.AnalysisMilliseconds:F1} ms | " +
-                    $"resize={texture.ResizeMilliseconds:F1} ms | " +
-                    $"factor=1/{texture.SelectedFactor} | status={texture.StatusLabel}");
-            }
-        }
-
-        private static string GetTextureLabel(LazyTexTextureReport texture)
-        {
-            if (texture.Texture != null) return texture.Texture.name;
-            if (!string.IsNullOrEmpty(texture.TexturePath)) return System.IO.Path.GetFileNameWithoutExtension(texture.TexturePath);
-            return "<missing texture>";
         }
 
         private static bool IsNormalMap(Texture2D tex)

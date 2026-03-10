@@ -43,55 +43,10 @@ namespace LazyTex.Editor
         public LazyTexTextureStatus Status;
         public bool IsExcluded;
         public bool IsNormalMap;
-        public double AnalysisMilliseconds;
-        public double ResizeMilliseconds;
         public readonly List<LazyTexTextureStepReport> Steps = new List<LazyTexTextureStepReport>();
 
         public bool WasResized => Status == LazyTexTextureStatus.Resized;
         public long SavedBytes => WasResized ? Math.Max(0L, OriginalSizeBytes - ResizedSizeBytes) : 0L;
-        public double TotalMilliseconds => AnalysisMilliseconds + ResizeMilliseconds;
-
-        public string StatusLabel
-        {
-            get
-            {
-                switch (Status)
-                {
-                    case LazyTexTextureStatus.Excluded:
-                        return "Excluded";
-                    case LazyTexTextureStatus.Resized:
-                        return "Resized";
-                    case LazyTexTextureStatus.KeptOriginal:
-                        return "Kept";
-                    case LazyTexTextureStatus.SkippedTooSmall:
-                        return "Skipped: Too Small";
-                    case LazyTexTextureStatus.SkippedNormalMap:
-                        return "Skipped: Normal Map";
-                    default:
-                        return Status.ToString();
-                }
-            }
-        }
-
-        public string SummaryLabel
-        {
-            get
-            {
-                if (Status == LazyTexTextureStatus.Resized)
-                {
-                    string label = IsNormalMap ? "Curvature EER" : "EER";
-                    return $"1/{SelectedFactor} ({OriginalWidth / SelectedFactor}x{OriginalHeight / SelectedFactor}) | {label} {BestPassedSimilarity:F4}";
-                }
-
-                if (Steps.Count > 0)
-                {
-                    string label = IsNormalMap ? "Curvature EER" : "EER";
-                    return $"Stopped at 1/{LastEvaluatedFactor} | {label} {LastEvaluatedSimilarity:F4}";
-                }
-
-                return StatusLabel;
-            }
-        }
     }
 
     [Serializable]
@@ -103,11 +58,6 @@ namespace LazyTex.Editor
         public float NormalMapThreshold;
         public LazyTexAnalysisMode AnalysisMode;
         public int MinResolution;
-        public double TextureScanMilliseconds;
-        public double AnalysisMilliseconds;
-        public double ResizeMilliseconds;
-        public double MaterialSwapMilliseconds;
-        public double TotalMilliseconds;
         public readonly List<LazyTexTextureReport> Textures = new List<LazyTexTextureReport>();
 
         public int ResizedCount
@@ -203,6 +153,79 @@ namespace LazyTex.Editor
         private const float LeftPanelWidth = 280f;
         private const float SplitterWidth = 2f;
         private const float PreviewHeight = 220f;
+        private const string LanguageKey = "LazyTexOptimizerEditor.UseJapanese";
+
+        private static bool UseJapanese
+        {
+            get => EditorPrefs.GetBool(LanguageKey, true);
+            set => EditorPrefs.SetBool(LanguageKey, value);
+        }
+
+        private static class L
+        {
+            private static bool JP => UseJapanese;
+
+            public static string ToggleLanguageButton => JP ? "EN" : "JP";
+            public static string NoReportMessage => JP
+                ? "まだ LazyTex の実行結果がありません。PlayMode に入るか、LazyTex が動くビルドを実行してください。"
+                : "No LazyTex results yet. Enter Play Mode or run a build with LazyTex active.";
+            public static string NoResizes => JP ? "リサイズなし" : "No resizes";
+            public static string ModeLabel(string mode) => JP ? $"モード: {mode}" : $"Mode: {mode}";
+            public static string ExcludedInInspector => JP ? "Inspectorで除外済み" : "Excluded in Inspector";
+            public static string SelectTextureHint => JP ? "左のリストからテクスチャを選択してください。" : "Select a texture from the list on the left.";
+            public static string DetailsSection => JP ? "詳細" : "Details";
+            public static string TextureField => JP ? "テクスチャ" : "Texture";
+            public static string GeneratedField => JP ? "生成済み" : "Generated";
+            public static string PathField => JP ? "パス" : "Path";
+            public static string StatusField => JP ? "ステータス" : "Status";
+            public static string AnalysisField => JP ? "解析方法" : "Analysis";
+            public static string ExcludedField => JP ? "除外済み" : "Excluded";
+            public static string ConfigureInInspector => JP ? "Inspectorで設定" : "Configure in Inspector";
+            public static string UsedSlotsField => JP ? "使用スロット数" : "Used Slots";
+            public static string ResolutionMemorySection => JP ? "解像度 & メモリ" : "Resolution & Memory";
+            public static string OriginalField => JP ? "元のサイズ" : "Original";
+            public static string SelectedField => JP ? "選択サイズ" : "Selected";
+            public static string SavedField => JP ? "削減量" : "Saved";
+            public static string EerStepsSection => JP ? "EER解析ステップ" : "EER Analysis Steps";
+            public static string FactorHeader => JP ? "倍率" : "Factor";
+            public static string ResolutionHeader => JP ? "解像度" : "Resolution";
+            public static string ResultHeader => JP ? "結果" : "Result";
+            public static string PreviewSection => JP ? "プレビュー" : "Preview";
+            public static string BeforeLabel => JP ? "変更前" : "Before";
+            public static string AfterLabel => JP ? "変更後" : "After";
+            public static string PreviewUnavailable => JP ? "プレビューが利用できません" : "Preview unavailable";
+            public static string ResizedCountLabel(int count) => JP ? $"{count} 件リサイズ" : $"{count} resized";
+            public static string SavedBytesLabel(string bytes, float ratio) => JP
+                ? $"- {bytes} 削減 (全体の {ratio:F1}%)"
+                : $"- {bytes} saved ({ratio:F1}% of avatar textures)";
+            public static string GetStatusLabel(LazyTexTextureStatus status)
+            {
+                switch (status)
+                {
+                    case LazyTexTextureStatus.Excluded: return JP ? "除外済み" : "Excluded";
+                    case LazyTexTextureStatus.Resized: return JP ? "リサイズ済み" : "Resized";
+                    case LazyTexTextureStatus.KeptOriginal: return JP ? "変更なし" : "Kept";
+                    case LazyTexTextureStatus.SkippedTooSmall: return JP ? "スキップ: 小さすぎる" : "Skipped: Too Small";
+                    case LazyTexTextureStatus.SkippedNormalMap: return JP ? "スキップ: ノーマルマップ" : "Skipped: Normal Map";
+                    default: return status.ToString();
+                }
+            }
+            public static string GetSummaryLabel(LazyTexTextureReport texture)
+            {
+                if (texture.Status == LazyTexTextureStatus.Resized)
+                {
+                    string label = texture.IsNormalMap ? (JP ? "曲率EER" : "Curvature EER") : "EER";
+                    return $"1/{texture.SelectedFactor} ({texture.OriginalWidth / texture.SelectedFactor}x{texture.OriginalHeight / texture.SelectedFactor}) | {label} {texture.BestPassedSimilarity:F4}";
+                }
+                if (texture.Steps.Count > 0)
+                {
+                    string label = texture.IsNormalMap ? (JP ? "曲率EER" : "Curvature EER") : "EER";
+                    string stoppedAt = JP ? "停止: 1/" : "Stopped at 1/";
+                    return $"{stoppedAt}{texture.LastEvaluatedFactor} | {label} {texture.LastEvaluatedSimilarity:F4}";
+                }
+                return GetStatusLabel(texture.Status);
+            }
+        }
 
         private Vector2 _listScroll;
         private Vector2 _detailScroll;
@@ -229,10 +252,18 @@ namespace LazyTex.Editor
 
         private void OnGUI()
         {
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button(L.ToggleLanguageButton, GUILayout.Width(30f)))
+            {
+                UseJapanese = !UseJapanese;
+            }
+            EditorGUILayout.EndHorizontal();
+
             var report = LazyTexReportStore.LatestReport;
             if (report == null)
             {
-                EditorGUILayout.HelpBox("まだ LazyTex の実行結果がありません。PlayMode に入るか、LazyTex が動くビルドを実行してください。", MessageType.Info);
+                EditorGUILayout.HelpBox(L.NoReportMessage, MessageType.Info);
                 return;
             }
 
@@ -268,14 +299,14 @@ namespace LazyTex.Editor
             // Header summary
             EditorGUILayout.LabelField("LazyTex Report", EditorStyles.boldLabel);
             EditorGUILayout.LabelField(report.AvatarName, GetMutedLabelStyle());
-            EditorGUILayout.LabelField($"Mode: {report.AnalysisMode}", GetMutedLabelStyle());
+            EditorGUILayout.LabelField(L.ModeLabel(report.AnalysisMode.ToString()), GetMutedLabelStyle());
             EditorGUILayout.Space(4f);
 
             // Texture list
             _listScroll = EditorGUILayout.BeginScrollView(_listScroll);
             if (visibleTextures.Count == 0)
             {
-                GUILayout.Label("リサイズなし", GetMutedLabelStyle());
+                GUILayout.Label(L.NoResizes, GetMutedLabelStyle());
             }
             else
             {
@@ -322,7 +353,7 @@ namespace LazyTex.Editor
 
             var infoRect = new Rect(rowRect.x + 10f, rowRect.y + 22f, textWidth, 14f);
             string infoText = isExcluded
-                ? "Excluded in Inspector"
+                ? L.ExcludedInInspector
                 : $"1/{texture.SelectedFactor}  |  -{EditorUtility.FormatBytes(texture.SavedBytes)} ({shareOfAvatar * 100f:F1}%)";
             GUI.Label(infoRect, infoText, isExcluded ? GetExcludedMiniLabelStyle() : GetSavedMiniLabelStyle());
 
@@ -350,14 +381,14 @@ namespace LazyTex.Editor
 
             if (sel == null)
             {
-                EditorGUILayout.HelpBox("左のリストからテクスチャを選択してください。", MessageType.Info);
+                EditorGUILayout.HelpBox(L.SelectTextureHint, MessageType.Info);
                 EditorGUILayout.EndScrollView();
                 return;
             }
 
             // ---- Title ----
             EditorGUILayout.LabelField(GetTextureName(sel), EditorStyles.boldLabel);
-            EditorGUILayout.LabelField(sel.SummaryLabel, GetMutedLabelStyle());
+            EditorGUILayout.LabelField(L.GetSummaryLabel(sel), GetMutedLabelStyle());
             EditorGUILayout.Space(4f);
 
             DrawPreviewSection(sel);
@@ -365,49 +396,39 @@ namespace LazyTex.Editor
             EditorGUILayout.Space(8f);
 
             // ---- Overview section ----
-            EditorGUILayout.LabelField("Details", GetSectionTitleLabelStyle());
+            EditorGUILayout.LabelField(L.DetailsSection, GetSectionTitleLabelStyle());
             EditorGUILayout.BeginVertical("box");
-            DrawField("Texture", () => EditorGUILayout.ObjectField(sel.Texture, typeof(Texture2D), false));
+            DrawField(L.TextureField, () => EditorGUILayout.ObjectField(sel.Texture, typeof(Texture2D), false));
             if (sel.ResizedTexture != null)
             {
-                DrawField("Generated", () => EditorGUILayout.ObjectField(sel.ResizedTexture, typeof(Texture2D), false));
+                DrawField(L.GeneratedField, () => EditorGUILayout.ObjectField(sel.ResizedTexture, typeof(Texture2D), false));
             }
-            DrawLabelPair("Path", string.IsNullOrEmpty(sel.TexturePath) ? "<temporary>" : sel.TexturePath);
-            DrawLabelPair("Status", sel.StatusLabel);
-            DrawLabelPair("Analysis", report.AnalysisMode.ToString());
-            DrawLabelPair("Timing", $"{sel.TotalMilliseconds:F1} ms total");
+            DrawLabelPair(L.PathField, string.IsNullOrEmpty(sel.TexturePath) ? "<temporary>" : sel.TexturePath);
+            DrawLabelPair(L.StatusField, L.GetStatusLabel(sel.Status));
+            DrawLabelPair(L.AnalysisField, report.AnalysisMode.ToString());
             if (sel.IsExcluded)
             {
-                DrawLabelPairStyled("Excluded", "Configure in Inspector", GetExcludedMiniLabelStyle());
+                DrawLabelPairStyled(L.ExcludedField, L.ConfigureInInspector, GetExcludedMiniLabelStyle());
             }
-            DrawLabelPair("Used Slots", sel.ReferenceCount.ToString());
+            DrawLabelPair(L.UsedSlotsField, sel.ReferenceCount.ToString());
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space(6f);
 
             // ---- Resolution & Memory ----
-            EditorGUILayout.LabelField("Resolution & Memory", GetSectionTitleLabelStyle());
+            EditorGUILayout.LabelField(L.ResolutionMemorySection, GetSectionTitleLabelStyle());
             EditorGUILayout.BeginVertical("box");
-            DrawLabelPair("Original", $"{sel.OriginalWidth} × {sel.OriginalHeight}  ({EditorUtility.FormatBytes(sel.OriginalSizeBytes)})");
+            DrawLabelPair(L.OriginalField, $"{sel.OriginalWidth} × {sel.OriginalHeight}  ({EditorUtility.FormatBytes(sel.OriginalSizeBytes)})");
             int selW = sel.OriginalWidth / sel.SelectedFactor;
             int selH = sel.OriginalHeight / sel.SelectedFactor;
-            DrawLabelPair("Selected", $"{selW} × {selH}  ({EditorUtility.FormatBytes(sel.ResizedSizeBytes)})  — 1/{sel.SelectedFactor}");
+            DrawLabelPair(L.SelectedField, $"{selW} × {selH}  ({EditorUtility.FormatBytes(sel.ResizedSizeBytes)})  — 1/{sel.SelectedFactor}");
 
             float shareOfAvatar = report.TotalOriginalTextureBytes > 0
                 ? (float)sel.SavedBytes / report.TotalOriginalTextureBytes
                 : 0f;
-            DrawLabelPairFullStyled("Saved",
+            DrawLabelPairFullStyled(L.SavedField,
                 $"-{EditorUtility.FormatBytes(sel.SavedBytes)}  ({shareOfAvatar * 100f:F1}% of avatar textures)",
                 GetGreenEmphasisLabelStyle());
-            EditorGUILayout.EndVertical();
-
-            EditorGUILayout.Space(6f);
-
-            EditorGUILayout.LabelField("Timing", GetSectionTitleLabelStyle());
-            EditorGUILayout.BeginVertical("box");
-            DrawLabelPair("Analyze", $"{sel.AnalysisMilliseconds:F1} ms");
-            DrawLabelPair("Resize", $"{sel.ResizeMilliseconds:F1} ms");
-            DrawLabelPair("Total", $"{sel.TotalMilliseconds:F1} ms");
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space(6f);
@@ -415,15 +436,15 @@ namespace LazyTex.Editor
             // ---- EER Steps ----
             if (sel.Steps.Count > 0)
             {
-                EditorGUILayout.LabelField("EER Analysis Steps", GetSectionTitleLabelStyle());
+                EditorGUILayout.LabelField(L.EerStepsSection, GetSectionTitleLabelStyle());
                 EditorGUILayout.BeginVertical("box");
 
                 // Header
                 EditorGUILayout.BeginHorizontal();
-                GUILayout.Label("Factor", EditorStyles.miniBoldLabel, GUILayout.Width(50f));
-                GUILayout.Label("Resolution", EditorStyles.miniBoldLabel, GUILayout.Width(100f));
+                GUILayout.Label(L.FactorHeader, EditorStyles.miniBoldLabel, GUILayout.Width(50f));
+                GUILayout.Label(L.ResolutionHeader, EditorStyles.miniBoldLabel, GUILayout.Width(100f));
                 GUILayout.Label("EER", EditorStyles.miniBoldLabel, GUILayout.Width(80f));
-                GUILayout.Label("Result", EditorStyles.miniBoldLabel, GUILayout.Width(50f));
+                GUILayout.Label(L.ResultHeader, EditorStyles.miniBoldLabel, GUILayout.Width(50f));
                 GUILayout.FlexibleSpace();
                 EditorGUILayout.EndHorizontal();
 
@@ -473,13 +494,13 @@ namespace LazyTex.Editor
 
         private void DrawPreviewSection(LazyTexTextureReport texture)
         {
-            EditorGUILayout.LabelField("Preview", GetSectionTitleLabelStyle());
+            EditorGUILayout.LabelField(L.PreviewSection, GetSectionTitleLabelStyle());
             EditorGUILayout.BeginVertical("box");
             EditorGUILayout.BeginHorizontal();
-            DrawTexturePreviewPane("Before", texture.Texture, texture.OriginalWidth, texture.OriginalHeight, texture.OriginalSizeBytes);
+            DrawTexturePreviewPane(L.BeforeLabel, texture.Texture, texture.OriginalWidth, texture.OriginalHeight, texture.OriginalSizeBytes);
             GUILayout.Space(8f);
             DrawTexturePreviewPane(
-                "After",
+                L.AfterLabel,
                 texture.ResizedTexture,
                 Mathf.Max(1, texture.OriginalWidth / texture.SelectedFactor),
                 Mathf.Max(1, texture.OriginalHeight / texture.SelectedFactor),
@@ -492,17 +513,13 @@ namespace LazyTex.Editor
         {
             EditorGUILayout.BeginVertical("box");
             EditorGUILayout.BeginHorizontal();
-            GUILayout.Label($"{report.ResizedCount} resized", GetMutedLabelStyle(), GUILayout.Width(80f));
+            GUILayout.Label(L.ResizedCountLabel(report.ResizedCount), GetMutedLabelStyle(), GUILayout.Width(80f));
             GUILayout.Space(8f);
             GUILayout.Label(
-                $"- {EditorUtility.FormatBytes(report.TotalSavedBytes)} saved ({report.TotalSavedRatio * 100f:F1}% of avatar textures)",
+                L.SavedBytesLabel(EditorUtility.FormatBytes(report.TotalSavedBytes), report.TotalSavedRatio * 100f),
                 GetGreenEmphasisLabelStyle(),
                 GUILayout.ExpandWidth(true));
             EditorGUILayout.EndHorizontal();
-            EditorGUILayout.Space(4f);
-            EditorGUILayout.LabelField(
-                $"Timing: total {report.TotalMilliseconds:F1} ms | scan {report.TextureScanMilliseconds:F1} ms | analysis {report.AnalysisMilliseconds:F1} ms | resize {report.ResizeMilliseconds:F1} ms | material {report.MaterialSwapMilliseconds:F1} ms",
-                GetMutedLabelStyle());
             EditorGUILayout.EndVertical();
         }
 
@@ -521,7 +538,7 @@ namespace LazyTex.Editor
             }
             else
             {
-                GUI.Label(previewRect, "Preview unavailable", GetMutedCenteredLabelStyle());
+                GUI.Label(previewRect, L.PreviewUnavailable, GetMutedCenteredLabelStyle());
             }
 
             EditorGUILayout.LabelField($"{width} × {height}", GetMutedLabelStyle());

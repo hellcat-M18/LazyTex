@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using VRC.SDKBase;
 
 namespace LazyTex.Runtime
 {
@@ -23,12 +24,12 @@ namespace LazyTex.Runtime
     /// </summary>
     [DisallowMultipleComponent]
     [AddComponentMenu("LazyTex/LazyTex Optimizer")]
-    public class LazyTexOptimizer : MonoBehaviour
+    public class LazyTexOptimizer : MonoBehaviour, IEditorOnly
     {
-         [Tooltip("推奨設定のプリセットです。\n" +
-               "High / Medium / Low はしきい値を自動設定し、\n" +
-               "手動でしきい値を変更すると Custom に切り替わります。")]
-         public LazyTexQualityPreset qualityPreset = LazyTexQualityPreset.High;
+        [Tooltip("推奨設定のプリセットです。\n" +
+                 "High / Medium / Low はしきい値を自動設定し、\n" +
+                 "手動でしきい値を変更すると Custom に切り替わります。")]
+        public LazyTexQualityPreset qualityPreset = LazyTexQualityPreset.High;
 
         [Tooltip("縮小後にBilinearで元サイズへ戻した画像とのEER下限値。\n" +
              "1/2, 1/4, 1/8... の各段階で同じ基準として使われ、\n" +
@@ -36,7 +37,7 @@ namespace LazyTex.Runtime
         [Range(0f, 1f)]
         public float eerThreshold = 0.90f;
 
-          [HideInInspector]
+        [HideInInspector]
         public LazyTexAnalysisMode analysisMode = LazyTexAnalysisMode.Color;
 
         [Tooltip("この短辺ピクセル数未満のテクスチャは処理をスキップします。\n" +
@@ -51,10 +52,6 @@ namespace LazyTex.Runtime
                  "法線ベクトルの空間変化量（曲率）の保存率で縮小可否を判定します。(0\u20131)")]
         [Range(0f, 1f)]
         public float normalMapEerThreshold = 0.80f;
-
-        [Tooltip("一時的な計測ログを有効化します。\n" +
-             "実行ごとの所要時間と重いテクスチャをConsoleに出力します。")]
-        public bool enableTimingLogs = false;
 
         [SerializeField]
         private List<string> excludedTextureAssetPaths = new List<string>();
