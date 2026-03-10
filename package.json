@@ -1,7 +1,7 @@
 {
   "name": "tool.hellcat.lazy-tex",
   "displayName": "LazyTex - Sobel EER Texture Optimizer",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "unity": "2022.3",
   "description": "VRChatアバター向けNDMFプラグイン。Sobel Edge Energy Ratio（EER）を用いてテクスチャのエッジ保持率を評価し、視覚的な劣化を最小限に抑えながら解像度を非破壊で削減します。",
   "author": {
