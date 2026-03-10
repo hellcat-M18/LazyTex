@@ -1,3 +1,4 @@
+using System;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering;
@@ -28,7 +29,8 @@ namespace LazyTex.Editor
             Texture2D tex,
             float eerThreshold,
             int minResolution,
-            LazyTexAnalysisMode analysisMode)
+            LazyTexAnalysisMode analysisMode,
+            TextureEERCompute gpuCompute = null)
         {
             var report = new LazyTexTextureReport
             {
@@ -51,69 +53,39 @@ namespace LazyTex.Editor
                 return report;
             }
 
-            Color[] originalPixels = ReadTexturePixels(tex, tex.width, tex.height);
-            if (originalPixels == null) return report;
+            // Linear 空間で評価する。GPU パスの ComputeShader が sRGB RT を自動デコードして
+            // Linear 値で計算するため、CPU フォールバックも同一空間で揃える。
+            using var evaluator = new RoundTripEvaluator(tex, linearReadback: true);
 
-            double originalSobelSum = SobelMagnitudeSum(originalPixels, tex.width, tex.height, analysisMode);
-            if (originalSobelSum < 1e-6)
+            if (gpuCompute != null)
             {
-                int flatFactor = 1;
-                for (int factor = 2; minDim / factor >= minResolution; factor *= 2)
-                {
-                    report.Steps.Add(new LazyTexTextureStepReport
+                var sourceRT = evaluator.BlitSourceToRT();
+                double originalSobelSum = gpuCompute.ComputeSobelSum(sourceRT, tex.width, tex.height, analysisMode);
+                EvaluateTextureFactors(
+                    tex, report, eerThreshold, minResolution, originalSobelSum,
+                    factor =>
                     {
-                        Factor = factor,
-                        Width = Mathf.Max(1, tex.width / factor),
-                        Height = Mathf.Max(1, tex.height / factor),
-                        Similarity = 1f,
-                        Passed = true,
+                        var roundTripRT = evaluator.StepAndGetRoundTripRT();
+                        double rtSum = gpuCompute.ComputeSobelSum(roundTripRT, tex.width, tex.height, analysisMode);
+                        return (float)(rtSum / originalSobelSum);
                     });
-
-                    flatFactor = factor;
-                    if (factor > int.MaxValue / 2) break;
-                }
-
-                report.SelectedFactor = flatFactor;
-                report.BestPassedSimilarity = 1f;
-                report.LastEvaluatedFactor = flatFactor;
-                report.LastEvaluatedSimilarity = 1f;
-                report.Status = flatFactor > 1 ? LazyTexTextureStatus.Resized : LazyTexTextureStatus.KeptOriginal;
-                return report;
             }
-
-            int bestFactor = 1;
-            float bestSimilarity = 1f;
-            for (int factor = 2; minDim / factor >= minResolution; factor *= 2)
+            else
             {
-                float eer = ComputeRoundTripEer(tex, originalSobelSum, factor, analysisMode);
-                bool passed = eer >= eerThreshold;
+                Color[] originalPixels = evaluator.ReadSourceColors();
+                if (originalPixels == null) return report;
 
-                report.Steps.Add(new LazyTexTextureStepReport
-                {
-                    Factor = factor,
-                    Width = Mathf.Max(1, tex.width / factor),
-                    Height = Mathf.Max(1, tex.height / factor),
-                    Similarity = eer,
-                    Passed = passed,
-                });
-
-                report.LastEvaluatedFactor = factor;
-                report.LastEvaluatedSimilarity = eer;
-
-                if (!passed)
-                {
-                    break;
-                }
-
-                bestFactor = factor;
-                bestSimilarity = eer;
-
-                if (factor > int.MaxValue / 2) break;
+                double originalSobelSum = SobelMagnitudeSum(originalPixels, tex.width, tex.height, analysisMode);
+                EvaluateTextureFactors(
+                    tex, report, eerThreshold, minResolution, originalSobelSum,
+                    factor =>
+                    {
+                        var roundTripPixels = evaluator.StepAndReadColors();
+                        double roundTripSobelSum = SobelMagnitudeSum(roundTripPixels, tex.width, tex.height, analysisMode);
+                        return (float)(roundTripSobelSum / originalSobelSum);
+                    });
             }
 
-            report.SelectedFactor = bestFactor;
-            report.BestPassedSimilarity = bestSimilarity;
-            report.Status = bestFactor > 1 ? LazyTexTextureStatus.Resized : LazyTexTextureStatus.KeptOriginal;
             return report;
         }
 
@@ -125,7 +97,8 @@ namespace LazyTex.Editor
         public static LazyTexTextureReport AnalyzeNormalMap(
             Texture2D tex,
             float eerThreshold,
-            int minResolution)
+            int minResolution,
+            TextureEERCompute gpuCompute = null)
         {
             var report = new LazyTexTextureReport
             {
@@ -150,69 +123,37 @@ namespace LazyTex.Editor
             }
 
             bool isDxt5nm = IsDxt5nmEncoded(tex);
-            Vector3[] originalNormals = ReadNormalMapPixels(tex, tex.width, tex.height, isDxt5nm);
-            if (originalNormals == null) return report;
+            using var evaluator = new RoundTripEvaluator(tex, linearReadback: true);
 
-            double originalCurvatureSum = CurvatureMagnitudeSum(originalNormals, tex.width, tex.height);
-            if (originalCurvatureSum < 1e-6)
+            if (gpuCompute != null)
             {
-                int flatFactor = 1;
-                for (int factor = 2; minDim / factor >= minResolution; factor *= 2)
-                {
-                    report.Steps.Add(new LazyTexTextureStepReport
+                var sourceRT = evaluator.BlitSourceToRT();
+                double originalCurvatureSum = gpuCompute.ComputeCurvatureSum(sourceRT, tex.width, tex.height, isDxt5nm);
+                EvaluateTextureFactors(
+                    tex, report, eerThreshold, minResolution, originalCurvatureSum,
+                    factor =>
                     {
-                        Factor = factor,
-                        Width = Mathf.Max(1, tex.width / factor),
-                        Height = Mathf.Max(1, tex.height / factor),
-                        Similarity = 1f,
-                        Passed = true,
+                        var roundTripRT = evaluator.StepAndGetRoundTripRT();
+                        double rtSum = gpuCompute.ComputeCurvatureSum(roundTripRT, tex.width, tex.height, isDxt5nm);
+                        return (float)(rtSum / originalCurvatureSum);
                     });
-
-                    flatFactor = factor;
-                    if (factor > int.MaxValue / 2) break;
-                }
-
-                report.SelectedFactor = flatFactor;
-                report.BestPassedSimilarity = 1f;
-                report.LastEvaluatedFactor = flatFactor;
-                report.LastEvaluatedSimilarity = 1f;
-                report.Status = flatFactor > 1 ? LazyTexTextureStatus.Resized : LazyTexTextureStatus.KeptOriginal;
-                return report;
             }
-
-            int bestFactor = 1;
-            float bestSimilarity = 1f;
-            for (int factor = 2; minDim / factor >= minResolution; factor *= 2)
+            else
             {
-                float eer = ComputeRoundTripCurvatureEer(tex, originalCurvatureSum, factor, isDxt5nm);
-                bool passed = eer >= eerThreshold;
+                Vector3[] originalNormals = evaluator.ReadSourceNormals(isDxt5nm);
+                if (originalNormals == null) return report;
 
-                report.Steps.Add(new LazyTexTextureStepReport
-                {
-                    Factor = factor,
-                    Width = Mathf.Max(1, tex.width / factor),
-                    Height = Mathf.Max(1, tex.height / factor),
-                    Similarity = eer,
-                    Passed = passed,
-                });
-
-                report.LastEvaluatedFactor = factor;
-                report.LastEvaluatedSimilarity = eer;
-
-                if (!passed)
-                {
-                    break;
-                }
-
-                bestFactor = factor;
-                bestSimilarity = eer;
-
-                if (factor > int.MaxValue / 2) break;
+                double originalCurvatureSum = CurvatureMagnitudeSum(originalNormals, tex.width, tex.height);
+                EvaluateTextureFactors(
+                    tex, report, eerThreshold, minResolution, originalCurvatureSum,
+                    factor =>
+                    {
+                        var roundTripNormals = evaluator.StepAndReadNormals(isDxt5nm);
+                        double roundTripCurvatureSum = CurvatureMagnitudeSum(roundTripNormals, tex.width, tex.height);
+                        return (float)(roundTripCurvatureSum / originalCurvatureSum);
+                    });
             }
 
-            report.SelectedFactor = bestFactor;
-            report.BestPassedSimilarity = bestSimilarity;
-            report.Status = bestFactor > 1 ? LazyTexTextureStatus.Resized : LazyTexTextureStatus.KeptOriginal;
             return report;
         }
 
@@ -301,79 +242,74 @@ namespace LazyTex.Editor
         // Internal helpers
         // -----------------------------------------------------------------------
 
-        private static Color[] ReadTexturePixels(Texture source, int width, int height)
+        private static void EvaluateTextureFactors(
+            Texture2D tex,
+            LazyTexTextureReport report,
+            float similarityThreshold,
+            int minResolution,
+            double originalMetricSum,
+            Func<int, float> evaluateFactor)
         {
-            var prevRT = RenderTexture.active;
-            var rt = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGB32,
-                RenderTextureReadWrite.Default);
-            rt.filterMode = FilterMode.Bilinear;
-            Graphics.Blit(source, rt);
+            if (originalMetricSum < 1e-6)
+            {
+                int flatFactor = 1;
+                for (int factor = 2; minResolution <= Mathf.Min(tex.width, tex.height) / factor; factor *= 2)
+                {
+                    report.Steps.Add(new LazyTexTextureStepReport
+                    {
+                        Factor = factor,
+                        Width = Mathf.Max(1, tex.width / factor),
+                        Height = Mathf.Max(1, tex.height / factor),
+                        Similarity = 1f,
+                        Passed = true,
+                    });
 
-            try
-            {
-                return ReadRenderTexturePixels(rt, width, height);
-            }
-            finally
-            {
-                RenderTexture.active = prevRT;
-                RenderTexture.ReleaseTemporary(rt);
-            }
-        }
+                    flatFactor = factor;
+                    if (factor > int.MaxValue / 2) break;
+                }
 
-        private static Color[] ReadRenderTexturePixels(RenderTexture rt, int width, int height)
-        {
-            var prevRT = RenderTexture.active;
-            RenderTexture.active = rt;
-
-            var tmp = new Texture2D(width, height, TextureFormat.RGBA32, mipChain: false, linear: false);
-            try
-            {
-                tmp.ReadPixels(new Rect(0, 0, width, height), 0, 0, recalculateMipMaps: false);
-                tmp.Apply(updateMipmaps: false);
-                return tmp.GetPixels();
-            }
-            finally
-            {
-                Object.DestroyImmediate(tmp);
-                RenderTexture.active = prevRT;
-            }
-        }
-
-        private static float ComputeRoundTripEer(Texture2D source, double originalSobelSum, int factor, LazyTexAnalysisMode analysisMode)
-        {
-            if (originalSobelSum < 1e-6)
-            {
-                return 1f;
+                report.SelectedFactor = flatFactor;
+                report.BestPassedSimilarity = 1f;
+                report.LastEvaluatedFactor = flatFactor;
+                report.LastEvaluatedSimilarity = 1f;
+                report.Status = flatFactor > 1 ? LazyTexTextureStatus.Resized : LazyTexTextureStatus.KeptOriginal;
+                return;
             }
 
-            int downW = Mathf.Max(1, source.width / factor);
-            int downH = Mathf.Max(1, source.height / factor);
-
-            var previousFilterMode = source.filterMode;
-            var downRT = RenderTexture.GetTemporary(downW, downH, 0, RenderTextureFormat.ARGB32,
-                RenderTextureReadWrite.Default);
-            var upRT = RenderTexture.GetTemporary(source.width, source.height, 0, RenderTextureFormat.ARGB32,
-                RenderTextureReadWrite.Default);
-
-            downRT.filterMode = FilterMode.Bilinear;
-            upRT.filterMode = FilterMode.Bilinear;
-
-            try
+            int minDim = Mathf.Min(tex.width, tex.height);
+            int bestFactor = 1;
+            float bestSimilarity = 1f;
+            for (int factor = 2; minDim / factor >= minResolution; factor *= 2)
             {
-                source.filterMode = FilterMode.Bilinear;
-                Graphics.Blit(source, downRT);
-                Graphics.Blit(downRT, upRT);
+                float similarity = Mathf.Clamp01(evaluateFactor(factor));
+                bool passed = similarity >= similarityThreshold;
 
-                var roundTripPixels = ReadRenderTexturePixels(upRT, source.width, source.height);
-                double roundTripSobelSum = SobelMagnitudeSum(roundTripPixels, source.width, source.height, analysisMode);
-                return (float)(roundTripSobelSum / originalSobelSum);
+                report.Steps.Add(new LazyTexTextureStepReport
+                {
+                    Factor = factor,
+                    Width = Mathf.Max(1, tex.width / factor),
+                    Height = Mathf.Max(1, tex.height / factor),
+                    Similarity = similarity,
+                    Passed = passed,
+                });
+
+                report.LastEvaluatedFactor = factor;
+                report.LastEvaluatedSimilarity = similarity;
+
+                if (!passed)
+                {
+                    break;
+                }
+
+                bestFactor = factor;
+                bestSimilarity = similarity;
+
+                if (factor > int.MaxValue / 2) break;
             }
-            finally
-            {
-                source.filterMode = previousFilterMode;
-                RenderTexture.ReleaseTemporary(downRT);
-                RenderTexture.ReleaseTemporary(upRT);
-            }
+
+            report.SelectedFactor = bestFactor;
+            report.BestPassedSimilarity = bestSimilarity;
+            report.Status = bestFactor > 1 ? LazyTexTextureStatus.Resized : LazyTexTextureStatus.KeptOriginal;
         }
 
         private static void CopyTextureSettings(Texture2D source, Texture2D destination)
@@ -561,47 +497,158 @@ namespace LazyTex.Editor
         /// <summary>
         /// ノーマルマップテクスチャのピクセルを Linear 空間で読み取り、デコード済み法線ベクトル配列を返します。
         /// </summary>
-        private static Vector3[] ReadNormalMapPixels(Texture source, int width, int height, bool isDxt5nm)
+        private sealed class RoundTripEvaluator : IDisposable
         {
-            var prevRT = RenderTexture.active;
-            var rt = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGB32,
-                RenderTextureReadWrite.Linear);
-            rt.filterMode = FilterMode.Bilinear;
-            Graphics.Blit(source, rt);
+            private readonly Texture2D _source;
+            private readonly FilterMode _previousFilterMode;
+            private readonly RenderTexture _fullSizeRt;
+            private readonly RenderTextureReadWrite _readWrite;
+            private readonly bool _linearReadback;
 
-            try
+            private ReadbackBuffer _readbackBuffer;
+            private RenderTexture _currentDownscaleRt;
+            private int _currentFactor = 1;
+
+            public RoundTripEvaluator(Texture2D source, bool linearReadback)
             {
-                return ReadNormalMapFromRT(rt, width, height, isDxt5nm);
+                _source = source;
+                _previousFilterMode = source.filterMode;
+                _linearReadback = linearReadback;
+                _readWrite = linearReadback ? RenderTextureReadWrite.Linear : RenderTextureReadWrite.Default;
+                _fullSizeRt = RenderTexture.GetTemporary(source.width, source.height, 0, RenderTextureFormat.ARGB32, _readWrite);
+                _fullSizeRt.filterMode = FilterMode.Bilinear;
+                _source.filterMode = FilterMode.Bilinear;
             }
-            finally
+
+            // --- GPU path: RT を直接返す (ReadPixels 不要) ---
+
+            public RenderTexture BlitSourceToRT()
             {
-                RenderTexture.active = prevRT;
-                RenderTexture.ReleaseTemporary(rt);
+                Graphics.Blit(_source, _fullSizeRt);
+                return _fullSizeRt;
+            }
+
+            public RenderTexture StepAndGetRoundTripRT()
+            {
+                AdvanceDownscaleChain();
+                Graphics.Blit(_currentDownscaleRt, _fullSizeRt);
+                return _fullSizeRt;
+            }
+
+            // --- CPU fallback: ピクセル配列を返す ---
+
+            public Color[] ReadSourceColors()
+            {
+                Graphics.Blit(_source, _fullSizeRt);
+                return GetReadbackBuffer().ReadColors(_fullSizeRt);
+            }
+
+            public Vector3[] ReadSourceNormals(bool isDxt5nm)
+            {
+                Graphics.Blit(_source, _fullSizeRt);
+                return GetReadbackBuffer().ReadNormals(_fullSizeRt, isDxt5nm);
+            }
+
+            public Color[] StepAndReadColors()
+            {
+                AdvanceDownscaleChain();
+                Graphics.Blit(_currentDownscaleRt, _fullSizeRt);
+                return GetReadbackBuffer().ReadColors(_fullSizeRt);
+            }
+
+            public Vector3[] StepAndReadNormals(bool isDxt5nm)
+            {
+                AdvanceDownscaleChain();
+                Graphics.Blit(_currentDownscaleRt, _fullSizeRt);
+                return GetReadbackBuffer().ReadNormals(_fullSizeRt, isDxt5nm);
+            }
+
+            public void Dispose()
+            {
+                ReleaseCurrentDownscale();
+                RenderTexture.ReleaseTemporary(_fullSizeRt);
+                _readbackBuffer?.Dispose();
+                _source.filterMode = _previousFilterMode;
+            }
+
+            private ReadbackBuffer GetReadbackBuffer()
+            {
+                return _readbackBuffer ??= new ReadbackBuffer(_source.width, _source.height, _linearReadback);
+            }
+
+            private void AdvanceDownscaleChain()
+            {
+                int nextFactor = _currentFactor * 2;
+                int downW = Mathf.Max(1, _source.width / nextFactor);
+                int downH = Mathf.Max(1, _source.height / nextFactor);
+
+                var nextRt = RenderTexture.GetTemporary(downW, downH, 0, RenderTextureFormat.ARGB32, _readWrite);
+                nextRt.filterMode = FilterMode.Bilinear;
+
+                if (_currentDownscaleRt == null)
+                {
+                    Graphics.Blit(_source, nextRt);
+                }
+                else
+                {
+                    Graphics.Blit(_currentDownscaleRt, nextRt);
+                }
+
+                ReleaseCurrentDownscale();
+                _currentDownscaleRt = nextRt;
+                _currentFactor = nextFactor;
+            }
+
+            private void ReleaseCurrentDownscale()
+            {
+                if (_currentDownscaleRt == null) return;
+
+                RenderTexture.ReleaseTemporary(_currentDownscaleRt);
+                _currentDownscaleRt = null;
             }
         }
 
-        private static Vector3[] ReadNormalMapFromRT(RenderTexture rt, int width, int height, bool isDxt5nm)
+        private sealed class ReadbackBuffer : IDisposable
         {
-            var prevRT = RenderTexture.active;
-            RenderTexture.active = rt;
+            private readonly Texture2D _texture;
 
-            var tmp = new Texture2D(width, height, TextureFormat.RGBA32, mipChain: false, linear: true);
-            try
+            public ReadbackBuffer(int width, int height, bool linear)
             {
-                tmp.ReadPixels(new Rect(0, 0, width, height), 0, 0, recalculateMipMaps: false);
-                tmp.Apply(updateMipmaps: false);
-                Color[] pixels = tmp.GetPixels();
+                _texture = new Texture2D(width, height, TextureFormat.RGBA32, mipChain: false, linear: linear);
+            }
+
+            public Color[] ReadColors(RenderTexture rt)
+            {
+                var prevRt = RenderTexture.active;
+                RenderTexture.active = rt;
+
+                try
+                {
+                    _texture.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0, recalculateMipMaps: false);
+                    _texture.Apply(updateMipmaps: false);
+                    return _texture.GetPixels();
+                }
+                finally
+                {
+                    RenderTexture.active = prevRt;
+                }
+            }
+
+            public Vector3[] ReadNormals(RenderTexture rt, bool isDxt5nm)
+            {
+                Color[] pixels = ReadColors(rt);
                 var normals = new Vector3[pixels.Length];
                 for (int i = 0; i < pixels.Length; i++)
                 {
                     normals[i] = DecodeNormal(pixels[i], isDxt5nm);
                 }
+
                 return normals;
             }
-            finally
+
+            public void Dispose()
             {
-                Object.DestroyImmediate(tmp);
-                RenderTexture.active = prevRT;
+                UnityEngine.Object.DestroyImmediate(_texture);
             }
         }
 
@@ -665,41 +712,6 @@ namespace LazyTex.Editor
                 }
             }
             return sum;
-        }
-
-        private static float ComputeRoundTripCurvatureEer(
-            Texture2D source, double originalCurvatureSum, int factor, bool isDxt5nm)
-        {
-            if (originalCurvatureSum < 1e-6) return 1f;
-
-            int downW = Mathf.Max(1, source.width / factor);
-            int downH = Mathf.Max(1, source.height / factor);
-
-            var previousFilterMode = source.filterMode;
-            var downRT = RenderTexture.GetTemporary(downW, downH, 0, RenderTextureFormat.ARGB32,
-                RenderTextureReadWrite.Linear);
-            var upRT = RenderTexture.GetTemporary(source.width, source.height, 0, RenderTextureFormat.ARGB32,
-                RenderTextureReadWrite.Linear);
-
-            downRT.filterMode = FilterMode.Bilinear;
-            upRT.filterMode = FilterMode.Bilinear;
-
-            try
-            {
-                source.filterMode = FilterMode.Bilinear;
-                Graphics.Blit(source, downRT);
-                Graphics.Blit(downRT, upRT);
-
-                var roundTripNormals = ReadNormalMapFromRT(upRT, source.width, source.height, isDxt5nm);
-                double roundTripCurvatureSum = CurvatureMagnitudeSum(roundTripNormals, source.width, source.height);
-                return (float)(roundTripCurvatureSum / originalCurvatureSum);
-            }
-            finally
-            {
-                source.filterMode = previousFilterMode;
-                RenderTexture.ReleaseTemporary(downRT);
-                RenderTexture.ReleaseTemporary(upRT);
-            }
         }
 
         /// <summary>

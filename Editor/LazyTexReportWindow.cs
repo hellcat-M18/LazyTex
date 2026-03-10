@@ -43,10 +43,13 @@ namespace LazyTex.Editor
         public LazyTexTextureStatus Status;
         public bool IsExcluded;
         public bool IsNormalMap;
+        public double AnalysisMilliseconds;
+        public double ResizeMilliseconds;
         public readonly List<LazyTexTextureStepReport> Steps = new List<LazyTexTextureStepReport>();
 
         public bool WasResized => Status == LazyTexTextureStatus.Resized;
         public long SavedBytes => WasResized ? Math.Max(0L, OriginalSizeBytes - ResizedSizeBytes) : 0L;
+        public double TotalMilliseconds => AnalysisMilliseconds + ResizeMilliseconds;
 
         public string StatusLabel
         {
@@ -100,6 +103,11 @@ namespace LazyTex.Editor
         public float NormalMapThreshold;
         public LazyTexAnalysisMode AnalysisMode;
         public int MinResolution;
+        public double TextureScanMilliseconds;
+        public double AnalysisMilliseconds;
+        public double ResizeMilliseconds;
+        public double MaterialSwapMilliseconds;
+        public double TotalMilliseconds;
         public readonly List<LazyTexTextureReport> Textures = new List<LazyTexTextureReport>();
 
         public int ResizedCount
@@ -367,6 +375,7 @@ namespace LazyTex.Editor
             DrawLabelPair("Path", string.IsNullOrEmpty(sel.TexturePath) ? "<temporary>" : sel.TexturePath);
             DrawLabelPair("Status", sel.StatusLabel);
             DrawLabelPair("Analysis", report.AnalysisMode.ToString());
+            DrawLabelPair("Timing", $"{sel.TotalMilliseconds:F1} ms total");
             if (sel.IsExcluded)
             {
                 DrawLabelPairStyled("Excluded", "Configure in Inspector", GetExcludedMiniLabelStyle());
@@ -390,6 +399,15 @@ namespace LazyTex.Editor
             DrawLabelPairFullStyled("Saved",
                 $"-{EditorUtility.FormatBytes(sel.SavedBytes)}  ({shareOfAvatar * 100f:F1}% of avatar textures)",
                 GetGreenEmphasisLabelStyle());
+            EditorGUILayout.EndVertical();
+
+            EditorGUILayout.Space(6f);
+
+            EditorGUILayout.LabelField("Timing", GetSectionTitleLabelStyle());
+            EditorGUILayout.BeginVertical("box");
+            DrawLabelPair("Analyze", $"{sel.AnalysisMilliseconds:F1} ms");
+            DrawLabelPair("Resize", $"{sel.ResizeMilliseconds:F1} ms");
+            DrawLabelPair("Total", $"{sel.TotalMilliseconds:F1} ms");
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.Space(6f);
@@ -481,6 +499,10 @@ namespace LazyTex.Editor
                 GetGreenEmphasisLabelStyle(),
                 GUILayout.ExpandWidth(true));
             EditorGUILayout.EndHorizontal();
+            EditorGUILayout.Space(4f);
+            EditorGUILayout.LabelField(
+                $"Timing: total {report.TotalMilliseconds:F1} ms | scan {report.TextureScanMilliseconds:F1} ms | analysis {report.AnalysisMilliseconds:F1} ms | resize {report.ResizeMilliseconds:F1} ms | material {report.MaterialSwapMilliseconds:F1} ms",
+                GetMutedLabelStyle());
             EditorGUILayout.EndVertical();
         }
 

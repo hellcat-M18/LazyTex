@@ -27,6 +27,9 @@ namespace LazyTex.Editor
                 EditorGUI.indentLevel--;
             }
 
+            EditorGUILayout.Space(4f);
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("enableTimingLogs"));
+
             serializedObject.ApplyModifiedProperties();
 
             var optimizer = (LazyTexOptimizer)target;

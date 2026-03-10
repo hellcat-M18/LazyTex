@@ -1,0 +1,239 @@
+// GPU-accelerated Sobel / Curvature magnitude sum for EER analysis.
+// Each gradient kernel computes per-pixel magnitudes and reduces them
+// within the thread group (8×8 = 64 threads) to a single partial sum.
+// The Reduce kernel then sums those partial sums hierarchically.
+
+#pragma kernel SobelGrayscale
+#pragma kernel SobelColor
+#pragma kernel CurvatureNormal
+#pragma kernel CurvatureNormalDxt5nm
+#pragma kernel Reduce
+
+// ---------------------------------------------------------------------------
+// Parameters shared by gradient kernels
+// ---------------------------------------------------------------------------
+
+Texture2D<float4> _InputTex;
+uint _Width;
+uint _Height;
+uint _GroupsX;
+RWStructuredBuffer<float> _PartialSums;
+
+// ---------------------------------------------------------------------------
+// Parameters for the reduction kernel
+// ---------------------------------------------------------------------------
+
+RWStructuredBuffer<float> _ReduceInput;
+RWStructuredBuffer<float> _ReduceOutput;
+uint _ReduceCount;
+
+// ---------------------------------------------------------------------------
+// Helper functions
+// ---------------------------------------------------------------------------
+
+float Luminance(float4 c)
+{
+    return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+}
+
+float4 LoadClamped(int x, int y)
+{
+    int cx = clamp(x, 0, (int)_Width  - 1);
+    int cy = clamp(y, 0, (int)_Height - 1);
+    return _InputTex[uint2(cx, cy)];
+}
+
+float3 DecodeNormalStandard(float4 p)
+{
+    float nx = p.r * 2.0 - 1.0;
+    float ny = p.g * 2.0 - 1.0;
+    float nz = sqrt(max(0.0, 1.0 - nx * nx - ny * ny));
+    float len = sqrt(nx * nx + ny * ny + nz * nz);
+    return len > 1e-6 ? float3(nx, ny, nz) / len : float3(0, 0, 1);
+}
+
+float3 DecodeNormalDxt5nm(float4 p)
+{
+    float nx = p.a * 2.0 - 1.0;
+    float ny = p.g * 2.0 - 1.0;
+    float nz = sqrt(max(0.0, 1.0 - nx * nx - ny * ny));
+    float len = sqrt(nx * nx + ny * ny + nz * nz);
+    return len > 1e-6 ? float3(nx, ny, nz) / len : float3(0, 0, 1);
+}
+
+// ---------------------------------------------------------------------------
+// Intra-group reduction (8×8 = 64 threads)
+// ---------------------------------------------------------------------------
+
+#define GRAD_GROUP_SIZE 64
+groupshared float gs_grad[GRAD_GROUP_SIZE];
+
+void GroupReduceAndStore(uint groupIndex, float value, uint3 groupId)
+{
+    gs_grad[groupIndex] = value;
+    GroupMemoryBarrierWithGroupSync();
+
+    [unroll] for (uint s = GRAD_GROUP_SIZE / 2; s > 0; s >>= 1)
+    {
+        if (groupIndex < s)
+            gs_grad[groupIndex] += gs_grad[groupIndex + s];
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    if (groupIndex == 0)
+        _PartialSums[groupId.y * _GroupsX + groupId.x] = gs_grad[0];
+}
+
+// ---------------------------------------------------------------------------
+// Gradient kernels – Sobel (grayscale luminance)
+// ---------------------------------------------------------------------------
+
+[numthreads(8, 8, 1)]
+void SobelGrayscale(uint3 id : SV_DispatchThreadID,
+                    uint groupIndex : SV_GroupIndex,
+                    uint3 groupId : SV_GroupID)
+{
+    float mag = 0;
+    if (id.x < _Width && id.y < _Height)
+    {
+        int x = (int)id.x;
+        int y = (int)id.y;
+
+        float g00 = Luminance(LoadClamped(x - 1, y - 1));
+        float g01 = Luminance(LoadClamped(x,     y - 1));
+        float g02 = Luminance(LoadClamped(x + 1, y - 1));
+        float g10 = Luminance(LoadClamped(x - 1, y    ));
+        float g12 = Luminance(LoadClamped(x + 1, y    ));
+        float g20 = Luminance(LoadClamped(x - 1, y + 1));
+        float g21 = Luminance(LoadClamped(x,     y + 1));
+        float g22 = Luminance(LoadClamped(x + 1, y + 1));
+
+        float gx = -g00 + g02 - 2.0 * g10 + 2.0 * g12 - g20 + g22;
+        float gy = -g00 - 2.0 * g01 - g02 + g20 + 2.0 * g21 + g22;
+        mag = sqrt(gx * gx + gy * gy);
+    }
+
+    GroupReduceAndStore(groupIndex, mag, groupId);
+}
+
+// ---------------------------------------------------------------------------
+// Gradient kernels – Sobel (RGB color)
+// ---------------------------------------------------------------------------
+
+[numthreads(8, 8, 1)]
+void SobelColor(uint3 id : SV_DispatchThreadID,
+                uint groupIndex : SV_GroupIndex,
+                uint3 groupId : SV_GroupID)
+{
+    float mag = 0;
+    if (id.x < _Width && id.y < _Height)
+    {
+        int x = (int)id.x;
+        int y = (int)id.y;
+
+        float3 p00 = LoadClamped(x - 1, y - 1).rgb;
+        float3 p01 = LoadClamped(x,     y - 1).rgb;
+        float3 p02 = LoadClamped(x + 1, y - 1).rgb;
+        float3 p10 = LoadClamped(x - 1, y    ).rgb;
+        float3 p12 = LoadClamped(x + 1, y    ).rgb;
+        float3 p20 = LoadClamped(x - 1, y + 1).rgb;
+        float3 p21 = LoadClamped(x,     y + 1).rgb;
+        float3 p22 = LoadClamped(x + 1, y + 1).rgb;
+
+        float3 gx = -p00 + p02 - 2.0 * p10 + 2.0 * p12 - p20 + p22;
+        float3 gy = -p00 - 2.0 * p01 - p02 + p20 + 2.0 * p21 + p22;
+        mag = sqrt(dot(gx, gx) + dot(gy, gy));
+    }
+
+    GroupReduceAndStore(groupIndex, mag, groupId);
+}
+
+// ---------------------------------------------------------------------------
+// Gradient kernels – Curvature (standard normal map)
+// ---------------------------------------------------------------------------
+
+[numthreads(8, 8, 1)]
+void CurvatureNormal(uint3 id : SV_DispatchThreadID,
+                     uint groupIndex : SV_GroupIndex,
+                     uint3 groupId : SV_GroupID)
+{
+    float mag = 0;
+    if (id.x < _Width && id.y < _Height)
+    {
+        int x = (int)id.x;
+        int y = (int)id.y;
+
+        float3 n00 = DecodeNormalStandard(LoadClamped(x - 1, y - 1));
+        float3 n01 = DecodeNormalStandard(LoadClamped(x,     y - 1));
+        float3 n02 = DecodeNormalStandard(LoadClamped(x + 1, y - 1));
+        float3 n10 = DecodeNormalStandard(LoadClamped(x - 1, y    ));
+        float3 n12 = DecodeNormalStandard(LoadClamped(x + 1, y    ));
+        float3 n20 = DecodeNormalStandard(LoadClamped(x - 1, y + 1));
+        float3 n21 = DecodeNormalStandard(LoadClamped(x,     y + 1));
+        float3 n22 = DecodeNormalStandard(LoadClamped(x + 1, y + 1));
+
+        float3 gx = -n00 + n02 - 2.0 * n10 + 2.0 * n12 - n20 + n22;
+        float3 gy = -n00 - 2.0 * n01 - n02 + n20 + 2.0 * n21 + n22;
+        mag = sqrt(dot(gx, gx) + dot(gy, gy));
+    }
+
+    GroupReduceAndStore(groupIndex, mag, groupId);
+}
+
+// ---------------------------------------------------------------------------
+// Gradient kernels – Curvature (DXT5nm normal map)
+// ---------------------------------------------------------------------------
+
+[numthreads(8, 8, 1)]
+void CurvatureNormalDxt5nm(uint3 id : SV_DispatchThreadID,
+                           uint groupIndex : SV_GroupIndex,
+                           uint3 groupId : SV_GroupID)
+{
+    float mag = 0;
+    if (id.x < _Width && id.y < _Height)
+    {
+        int x = (int)id.x;
+        int y = (int)id.y;
+
+        float3 n00 = DecodeNormalDxt5nm(LoadClamped(x - 1, y - 1));
+        float3 n01 = DecodeNormalDxt5nm(LoadClamped(x,     y - 1));
+        float3 n02 = DecodeNormalDxt5nm(LoadClamped(x + 1, y - 1));
+        float3 n10 = DecodeNormalDxt5nm(LoadClamped(x - 1, y    ));
+        float3 n12 = DecodeNormalDxt5nm(LoadClamped(x + 1, y    ));
+        float3 n20 = DecodeNormalDxt5nm(LoadClamped(x - 1, y + 1));
+        float3 n21 = DecodeNormalDxt5nm(LoadClamped(x,     y + 1));
+        float3 n22 = DecodeNormalDxt5nm(LoadClamped(x + 1, y + 1));
+
+        float3 gx = -n00 + n02 - 2.0 * n10 + 2.0 * n12 - n20 + n22;
+        float3 gy = -n00 - 2.0 * n01 - n02 + n20 + 2.0 * n21 + n22;
+        mag = sqrt(dot(gx, gx) + dot(gy, gy));
+    }
+
+    GroupReduceAndStore(groupIndex, mag, groupId);
+}
+
+// ---------------------------------------------------------------------------
+// Reduction kernel (256 threads per group)
+// ---------------------------------------------------------------------------
+
+#define REDUCE_GROUP_SIZE 256
+groupshared float gs_reduce[REDUCE_GROUP_SIZE];
+
+[numthreads(REDUCE_GROUP_SIZE, 1, 1)]
+void Reduce(uint3 id : SV_DispatchThreadID,
+            uint groupIndex : SV_GroupIndex,
+            uint3 groupId : SV_GroupID)
+{
+    gs_reduce[groupIndex] = (id.x < _ReduceCount) ? _ReduceInput[id.x] : 0.0;
+    GroupMemoryBarrierWithGroupSync();
+
+    [unroll] for (uint s = REDUCE_GROUP_SIZE / 2; s > 0; s >>= 1)
+    {
+        if (groupIndex < s)
+            gs_reduce[groupIndex] += gs_reduce[groupIndex + s];
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    if (groupIndex == 0)
+        _ReduceOutput[groupId.x] = gs_reduce[0];
+}

@@ -33,12 +33,16 @@ namespace LazyTex.Runtime
 
         [Tooltip("TextureImporterでNormalMapと設定されているテクスチャをスキップします。\n" +
                  "オフにすると曲率EERで縮小判定を行います。")]
-        public bool skipNormalMaps = true;
+        public bool skipNormalMaps = false;
 
         [Tooltip("ノーマルマップ用の曲率EER閾値。\n" +
                  "法線ベクトルの空間変化量（曲率）の保存率で縮小可否を判定します。(0\u20131)")]
         [Range(0f, 1f)]
-        public float normalMapEerThreshold = 0.85f;
+        public float normalMapEerThreshold = 0.80f;
+
+        [Tooltip("一時的な計測ログを有効化します。\n" +
+             "実行ごとの所要時間と重いテクスチャをConsoleに出力します。")]
+        public bool enableTimingLogs = false;
 
         [SerializeField]
         private List<string> excludedTextureAssetPaths = new List<string>();
