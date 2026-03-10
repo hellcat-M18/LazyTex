@@ -1,0 +1,25 @@
+{
+  "name": "tool.hellcat.lazy-tex",
+  "displayName": "LazyTex - Sobel EER Texture Optimizer",
+  "version": "0.1.0",
+  "unity": "2022.3",
+  "description": "VRChatアバター向けNDMFプラグイン。Sobel Edge Energy Ratio（EER）を用いてテクスチャのエッジ保持率を評価し、視覚的な劣化を最小限に抑えながら解像度を非破壊で削減します。",
+  "author": {
+    "name": "Hellcat",
+    "url": "https://github.com/hellcat-M18"
+  },
+  "license": "MIT",
+  "dependencies": {},
+  "vpmDependencies": {
+    "com.vrchat.avatars": ">=3.10.0",
+    "nadena.dev.ndmf": ">=1.11.0 <2.0.0-a"
+  },
+  "keywords": [
+    "vrchat",
+    "avatar",
+    "texture",
+    "optimize",
+    "ndmf",
+    "non-destructive"
+  ]
+}

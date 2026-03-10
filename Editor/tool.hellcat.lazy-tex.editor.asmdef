@@ -1,0 +1,20 @@
+{
+  "name": "tool.hellcat.lazy-tex.editor",
+  "rootNamespace": "LazyTex.Editor",
+  "references": [
+    "tool.hellcat.lazy-tex.runtime",
+    "nadena.dev.ndmf",
+    "nadena.dev.ndmf.runtime"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}
