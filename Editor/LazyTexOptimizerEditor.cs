@@ -28,8 +28,8 @@ namespace LazyTex.Editor
             public static string PresetHelpTooltip => JP ? "プリセット説明を表示" : "Show preset description";
             public static string QualityPreset => JP ? "品質プリセット" : "Quality Preset";
             public static string QualityPresetTooltip => JP
-                ? "処理品質のプリセットです。High / Medium / Low はしきい値を自動設定し、手動で変更すると Custom になります。"
-                : "Quality presets. High / Medium / Low set thresholds automatically, and manual changes switch to Custom.";
+                ? "処理品質のプリセットです。High / Medium / Low はしきい値と解像度の下限値を自動設定し、手動で変更すると Custom になります。"
+                : "Quality presets. High / Medium / Low set thresholds and minimum processing resolution automatically, and manual changes switch to Custom.";
             public static string SkipNormalMaps => JP ? "ノーマルマップを除外" : "Skip Normal Maps";
             public static string SkipNormalMapsTooltip => JP
                 ? "TextureImporter で NormalMap と設定されているテクスチャをスキップします。オフにすると曲率EERで判定します。"
@@ -42,7 +42,7 @@ namespace LazyTex.Editor
             public static string NormalMapCurvatureThresholdTooltip => JP
                 ? "ノーマルマップの曲率保持率の下限値です。法線ベクトルの空間変化量をどれだけ保てるかで判定します。"
                 : "Lower bound for normal map curvature preservation. It judges how much spatial change in normal vectors is retained.";
-            public static string MinResolutionToProcess => JP ? "最小処理解像度" : "Min Resolution To Process";
+            public static string MinResolutionToProcess => JP ? "解像度の下限値" : "Min Resolution To Process";
             public static string MinResolutionTooltip => JP
                 ? "この解像度未満のテクスチャは処理をスキップします。小さなテクスチャをさらに縮小しないための下限です。"
                 : "Textures smaller than this resolution are skipped. This is the lower bound to avoid shrinking already small textures further.";
@@ -51,14 +51,14 @@ namespace LazyTex.Editor
             //     : "Textures smaller than this resolution are skipped. This is the lower bound to avoid shrinking already small textures further.";
 
             public static string PresetHelpBox => JP
-                ? "High：最も保守的な設定です。単純なマスクや要素の少ない一部のテクスチャのみがリサイズされます。\n\n" +
-                  "Medium：Highより少し軽量化を意識した設定です。上記に加え、模様の少ない衣装などのテクスチャがリサイズされます。\n\n" +
-                  "Low：本格的に容量を減らすことを目的とした設定です。大半のテクスチャが必要に応じてリサイズされます。\n\n" +
-                  "Custom：自由に値を設定できる設定です。参考までに、Highは0.9/0.8、Mediumは0.6/0.5、Lowは0.4/0.3に設定されています。"
-                : "High: Most conservative setting. Only simple masks and a few low-detail textures will be resized.\n\n" +
-                  "Medium: Slightly more aggressive than High. Additionally resizes textures with sparse patterns such as some outfit textures.\n\n" +
-                  "Low: Designed to significantly reduce file size. Most textures will be resized as needed.\n\n" +
-                  "Custom: Set values freely. For reference, High is 0.9/0.8, Medium is 0.6/0.5, and Low is 0.4/0.3.";
+                                ? "High：最も保守的な設定です。単純なマスクや要素の少ない一部のテクスチャのみがリサイズされます。解像度の下限値は 512 です。\n\n" +
+                                    "Medium：Highより少し軽量化を意識した設定です。上記に加え、模様の少ない衣装などのテクスチャがリサイズされます。解像度の下限値は 512 です。\n\n" +
+                                    "Low：本格的に容量を減らすことを目的とした設定です。大半のテクスチャが必要に応じてリサイズされます。解像度の下限値は 256 です。\n\n" +
+                                    "Custom：しきい値と解像度の下限値を自由に設定できる設定です。参考までに、High は 0.9 / 0.8 / 512、Medium は 0.6 / 0.5 / 512、Low は 0.4 / 0.3 / 256 です。"
+                                : "High: Most conservative setting. Only simple masks and a few low-detail textures will be resized. Minimum processing resolution is 512.\n\n" +
+                                    "Medium: Slightly more aggressive than High. Additionally resizes textures with sparse patterns such as some outfit textures. Minimum processing resolution is 512.\n\n" +
+                                    "Low: Designed to significantly reduce file size. Most textures will be resized as needed. Minimum processing resolution is 256.\n\n" +
+                                    "Custom: Set thresholds and minimum processing resolution freely. For reference, High is 0.9 / 0.8 / 512, Medium is 0.6 / 0.5 / 512, and Low is 0.4 / 0.3 / 256.";
 
             public static string ExcludedTexturesHelpBox => JP
                 ? "体や顔などのテクスチャは、チェックを入れて処理対象から除外しておくことを推奨します。"
@@ -138,7 +138,6 @@ namespace LazyTex.Editor
 
                 if (!skipNormalMapsProp.boolValue)
                 {
-                    EditorGUI.indentLevel++;
                     EditorGUI.BeginChangeCheck();
                     float normalThreshold = EditorGUILayout.Slider(new GUIContent(L.NormalMapCurvatureThreshold, L.NormalMapCurvatureThresholdTooltip), normalMapThresholdProp.floatValue, 0f, 1f);
                     if (EditorGUI.EndChangeCheck())
@@ -146,12 +145,13 @@ namespace LazyTex.Editor
                         normalMapThresholdProp.floatValue = normalThreshold;
                         presetProp.enumValueIndex = (int)LazyTexQualityPreset.Custom;
                     }
-                    EditorGUI.indentLevel--;
                 }
             }
 
-            DrawMinResolutionDropdown(minResolutionProp);
-            //EditorGUILayout.HelpBox(L.MinResolutionHelpBox, MessageType.None);
+            if (isCustomPreset)
+            {
+                DrawMinResolutionDropdown(minResolutionProp);
+            }
 
             serializedObject.ApplyModifiedProperties();
 

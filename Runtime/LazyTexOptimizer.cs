@@ -27,8 +27,8 @@ namespace LazyTex.Runtime
     public class LazyTexOptimizer : MonoBehaviour, IEditorOnly
     {
         [Tooltip("推奨設定のプリセットです。\n" +
-                 "High / Medium / Low はしきい値を自動設定し、\n" +
-                 "手動でしきい値を変更すると Custom に切り替わります。")]
+                 "High / Medium / Low はしきい値と解像度の下限値を自動設定し、\n" +
+                 "手動で値を変更すると Custom に切り替わります。")] 
         public LazyTexQualityPreset qualityPreset = LazyTexQualityPreset.High;
 
         [Tooltip("縮小後にBilinearで元サイズへ戻した画像とのEER下限値。\n" +
@@ -90,16 +90,19 @@ namespace LazyTex.Runtime
                 case LazyTexQualityPreset.High:
                     eerThreshold = 0.90f;
                     normalMapEerThreshold = 0.80f;
+                    minResolutionToProcess = 512;
                     break;
 
                 case LazyTexQualityPreset.Medium:
                     eerThreshold = 0.60f;
                     normalMapEerThreshold = 0.50f;
+                    minResolutionToProcess = 512;
                     break;
 
                 case LazyTexQualityPreset.Low:
                     eerThreshold = 0.40f;
                     normalMapEerThreshold = 0.30f;
+                    minResolutionToProcess = 256;
                     break;
 
                 case LazyTexQualityPreset.Custom:

@@ -181,7 +181,7 @@ namespace LazyTex.Editor
             public static string AnalysisField => JP ? "解析方法" : "Analysis";
             public static string ExcludedField => JP ? "除外済み" : "Excluded";
             public static string ConfigureInInspector => JP ? "Inspectorで設定" : "Configure in Inspector";
-            public static string UsedSlotsField => JP ? "使用スロット数" : "Used Slots";
+            public static string UsedSlotsField => JP ? "参照スロット数" : "Used Slots";
             public static string ResolutionMemorySection => JP ? "解像度 & メモリ" : "Resolution & Memory";
             public static string OriginalField => JP ? "元のサイズ" : "Original";
             public static string SelectedField => JP ? "選択サイズ" : "Selected";
