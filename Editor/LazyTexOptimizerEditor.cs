@@ -53,7 +53,7 @@ namespace LazyTex.Editor
             public static string PresetHelpBox => JP
                                 ? "High：最も保守的な設定です。単純なマスクや要素の少ない一部のテクスチャのみがリサイズされます。解像度の下限値は 512 です。\n\n" +
                                     "Medium：Highより少し軽量化を意識した設定です。上記に加え、模様の少ない衣装などのテクスチャがリサイズされます。解像度の下限値は 512 です。\n\n" +
-                                    "Low：本格的に容量を減らすことを目的とした設定です。大半のテクスチャが必要に応じてリサイズされます。解像度の下限値は 256 です。\n\n" +
+                                    "Low：本格的に容量を減らすことを目的とした設定です。多くのテクスチャが必要に応じてリサイズされます。解像度の下限値は 256 です。\n\n" +
                                     "Custom：しきい値と解像度の下限値を自由に設定できる設定です。参考までに、High は 0.9 / 0.8 / 512、Medium は 0.6 / 0.5 / 512、Low は 0.4 / 0.3 / 256 です。"
                                 : "High: Most conservative setting. Only simple masks and a few low-detail textures will be resized. Minimum processing resolution is 512.\n\n" +
                                     "Medium: Slightly more aggressive than High. Additionally resizes textures with sparse patterns such as some outfit textures. Minimum processing resolution is 512.\n\n" +
@@ -79,6 +79,11 @@ namespace LazyTex.Editor
             public static string IncludeUndoLabel => JP ? "LazyTexテクスチャを含める" : "Include LazyTex Texture";
             public static string RemoveExclusionUndoLabel => JP ? "LazyTex除外を削除" : "Remove LazyTex Exclusion";
             public static string ChangePresetUndoLabel => JP ? "LazyTex品質プリセットを変更" : "Change LazyTex Quality Preset";
+
+            public static string DuplicateError => JP
+                ? "アバター内に LazyTex Optimizer が複数あります。1つのアバターに対して1つまで追加できます。"
+                : "Multiple LazyTex Optimizer components detected. Only one is allowed per avatar.";
+            public static string RemoveDuplicateButton => JP ? "このコンポーネントを削除" : "Remove This Component";
         }
 
         public override void OnInspectorGUI()
@@ -92,6 +97,19 @@ namespace LazyTex.Editor
                 UseJapanese = !UseJapanese;
             }
             EditorGUILayout.EndHorizontal();
+
+            var self = (LazyTexOptimizer)target;
+            var allOptimizers = self.transform.root.GetComponentsInChildren<LazyTexOptimizer>(true);
+            if (allOptimizers.Length > 1)
+            {
+                EditorGUILayout.HelpBox(L.DuplicateError, MessageType.Error);
+                if (GUILayout.Button(L.RemoveDuplicateButton))
+                {
+                    Undo.DestroyObjectImmediate(self);
+                    GUIUtility.ExitGUI();
+                }
+                return;
+            }
 
             var presetProp = serializedObject.FindProperty("qualityPreset");
             var eerThresholdProp = serializedObject.FindProperty("eerThreshold");

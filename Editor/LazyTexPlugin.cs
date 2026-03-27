@@ -25,7 +25,13 @@ namespace LazyTex.Editor
                 var optimizers = avatarRoot.GetComponentsInChildren<LazyTexOptimizer>(true);
                 if (optimizers.Length == 0) return;
 
-                // 複数ある場合は先頭の設定を採用（通常は1つ）
+                if (optimizers.Length > 1)
+                {
+                    Debug.LogError(
+                        "[LazyTex] 複数の LazyTex Optimizer コンポーネントが検出されました。1つのアバターに対して1つまでしか使用できません。先頭のコンポーネントの設定を使用します。",
+                        optimizers[0]);
+                }
+
                 var report = TextureOptimizePass.Execute(ctx, optimizers[0]);
                 LazyTexReportStore.Publish(report, EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isPlaying);
 

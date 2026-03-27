@@ -4,16 +4,14 @@ VRChatアバター向けNDMFプラグイン。Sobel Edge Energy Ratio（EER）�
 
 ## インストール
 
-### VCC（VRChat Creator Companion）
+### VCC / ALCOM
 
-1. [VPM リポジトリを追加](https://hellcat-M18.github.io/vpm-repos/)
+1. [VPM リポジトリを追加](https://hellcat-m18.github.io/vpm-repos/)
 2. プロジェクトのパッケージ一覧から **LazyTex** を追加
 
 ## 使い方
 
-1. アバターのルートに「LazyTex Optimizer」を追加
-2. (任意)プリセットの変更・除外テクスチャの指定
-3. PlayModeで結果を確認
+**[→ 使い方マニュアル（note）](https://note.com/hellcat_m18/n/n9859e380ef2b)**
 
 ## ライセンス
 
